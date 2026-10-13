@@ -68,6 +68,52 @@ describe("OAuthQuotaUsageInline quota estimates", () => {
     expect(screen.getByText("预估额度(2h): ~$100.00(剩余 ~$80.00)")).toBeInTheDocument();
   });
 
+  it("keeps a partial-cost estimate visible and explains missing costs on refresh", () => {
+    const { rerender } = render(
+      <OAuthQuotaUsageInline cliKey="codex" nowUnix={now} limits={limits()} />
+    );
+    const initial = screen.getByText("预估额度(5h): ~$100.00(剩余 ~$80.00)");
+    expect(initial.getAttribute("title")).not.toContain("请求缺少费用");
+
+    rerender(
+      <OAuthQuotaUsageInline
+        cliKey="codex"
+        nowUnix={now}
+        limits={limits({
+          quota_estimates: {
+            short: { ...estimate, sample_count: 4, unpriced_count: 1 },
+            weekly: null,
+          },
+        })}
+      />
+    );
+    expect(screen.getByText("预估额度(5h): ~$100.00(剩余 ~$80.00)")).toHaveAttribute(
+      "title",
+      expect.stringContaining("其中 1 次请求缺少费用，仅按已记录费用估算，结果可能偏低。")
+    );
+    expect(screen.queryByText(/费用数据不足/)).not.toBeInTheDocument();
+
+    rerender(
+      <OAuthQuotaUsageInline
+        cliKey="codex"
+        nowUnix={now}
+        limits={limits({
+          quota_estimates: {
+            short: {
+              ...estimate,
+              unpriced_count: 1,
+              window_start: now - 5 * 3600,
+              window_end: now,
+            },
+            weekly: null,
+          },
+        })}
+      />
+    );
+    expect(screen.getByText("预估额度(5h): 已重置，待刷新")).toBeInTheDocument();
+    expect(screen.queryByText(/预估额度.*\$100/)).not.toBeInTheDocument();
+  });
+
   it("renders Claude estimates and preserves compatibility with older quota results", () => {
     const { rerender } = render(
       <OAuthQuotaUsageInline cliKey="claude" nowUnix={now} limits={limits()} />
@@ -101,8 +147,24 @@ describe("OAuthQuotaUsageInline quota estimates", () => {
       "待积累用量",
     ],
     [
-      { ...estimate, estimated_total_usd: null, estimated_remaining_usd: null, unpriced_count: 1 },
+      {
+        ...estimate,
+        used_usd: null,
+        estimated_total_usd: null,
+        estimated_remaining_usd: null,
+        unpriced_count: 1,
+      },
       "费用数据不足",
+    ],
+    [
+      {
+        ...estimate,
+        used_usd: 0,
+        estimated_total_usd: null,
+        estimated_remaining_usd: null,
+        unpriced_count: 1,
+      },
+      "待积累用量",
     ],
     [{ ...estimate, window_end: now }, "已重置，待刷新"],
     [{ ...estimate, estimated_total_usd: Number.NaN }, "待积累用量"],

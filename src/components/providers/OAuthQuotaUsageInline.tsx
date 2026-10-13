@@ -111,13 +111,17 @@ function buildOAuthQuotaUsageSegments({
       const expired = estimate.window_end <= nowUnix;
       const unknownReason = expired
         ? "已重置，待刷新"
-        : estimate.unpriced_count > 0
+        : estimate.unpriced_count > 0 && estimate.used_usd == null
           ? "费用数据不足"
           : "待积累用量";
       const usedText =
         estimate.used_usd != null && Number.isFinite(estimate.used_usd)
           ? formatEstimateUsd(estimate.used_usd)
           : "未知";
+      const missingCostHint =
+        estimate.unpriced_count > 0
+          ? `其中 ${estimate.unpriced_count} 次请求缺少费用，仅按已记录费用估算，结果可能偏低。`
+          : "";
       segments.push({
         key,
         text:
@@ -126,7 +130,7 @@ function buildOAuthQuotaUsageSegments({
             : `${prefix}: ${unknownReason}`,
         title:
           hasEstimate && !expired
-            ? `${prefix}: ~${formatEstimateUsd(total)}，预估剩余: ~${formatEstimateUsd(remaining)}，本地已用: ${usedText}，样本: ${estimate.sample_count} 次。${hint}`
+            ? `${prefix}: ~${formatEstimateUsd(total)}，预估剩余: ~${formatEstimateUsd(remaining)}，本地已用: ${usedText}，样本: ${estimate.sample_count} 次。${missingCostHint}${hint}`
             : `${prefix}: ${unknownReason}。${hint}`,
       });
     }

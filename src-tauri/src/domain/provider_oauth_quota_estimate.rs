@@ -56,8 +56,9 @@ pub(crate) fn estimate_window(
         return Ok(None);
     };
 
-    // TOTAL avoids SQLite integer-SUM overflow. Missing/invalid prices remain
-    // unknown; they must not quietly count as free requests in the estimate.
+    // TOTAL avoids SQLite integer-SUM overflow. Like sub2api, estimate from
+    // recorded costs even when other requests are unpriced. Keep their count
+    // so the UI can explain that the estimate may be incomplete.
     let (cost_femto, sample_count, unpriced_count): (f64, i64, i64) = conn
         .query_row(
             r#"
@@ -91,7 +92,7 @@ WHERE r.created_at >= ?2 AND r.created_at <= ?3
         .then_some(cost_femto / USD_FEMTO_DENOM);
     let used_percent = 100.0 - remaining;
     let estimated_total_usd = used_usd
-        .filter(|used| *used > 0.0 && used_percent > 0.0 && unpriced_count == 0)
+        .filter(|used| *used > 0.0 && used_percent > 0.0)
         .map(|used| used * 100.0 / used_percent)
         .filter(|total| total.is_finite() && *total > 0.0);
 
@@ -202,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn quota_estimate_keeps_missing_prices_and_no_samples_unknown() {
+    fn quota_estimate_uses_priced_samples_when_other_costs_are_missing() {
         let conn = database();
         let empty = estimate_window(&conn, 1, window(80.0), NOW)
             .unwrap()
@@ -213,13 +214,50 @@ mod tests {
         for cost in [None, Some(-1)] {
             insert(&conn, 1, NOW, cost);
         }
+        let unpriced = estimate_window(&conn, 1, window(80.0), NOW)
+            .unwrap()
+            .unwrap();
+        assert!(unpriced.used_usd.is_none());
+        assert!(unpriced.estimated_total_usd.is_none());
+        assert!(unpriced.estimated_remaining_usd.is_none());
+        assert_eq!(unpriced.unpriced_count, 2);
         insert(&conn, 1, NOW, Some(1_000_000_000_000_000));
         let partial = estimate_window(&conn, 1, window(80.0), NOW)
             .unwrap()
             .unwrap();
         assert_eq!(partial.used_usd, Some(1.0));
+        assert_eq!(partial.sample_count, 3);
         assert_eq!(partial.unpriced_count, 2);
-        assert!(partial.estimated_total_usd.is_none());
+        assert_eq!(partial.estimated_total_usd, Some(5.0));
+        assert_eq!(partial.estimated_remaining_usd, Some(4.0));
+    }
+
+    #[test]
+    fn quota_estimate_keeps_recalculating_after_an_unpriced_request() {
+        let conn = database();
+        insert(&conn, 1, NOW, Some(20_000_000_000_000_000));
+        let initial = estimate_window(&conn, 1, window(80.0), NOW)
+            .unwrap()
+            .unwrap();
+        assert_eq!(initial.estimated_total_usd, Some(100.0));
+        assert_eq!(initial.unpriced_count, 0);
+
+        insert(&conn, 1, NOW, None);
+        let partial = estimate_window(&conn, 1, window(80.0), NOW)
+            .unwrap()
+            .unwrap();
+        assert_eq!(partial.estimated_total_usd, Some(100.0));
+        assert_eq!(partial.estimated_remaining_usd, Some(80.0));
+        assert_eq!(partial.unpriced_count, 1);
+
+        insert(&conn, 1, NOW, Some(10_000_000_000_000_000));
+        let updated = estimate_window(&conn, 1, window(75.0), NOW)
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.used_usd, Some(30.0));
+        assert_eq!(updated.estimated_total_usd, Some(120.0));
+        assert_eq!(updated.estimated_remaining_usd, Some(90.0));
+        assert_eq!(updated.unpriced_count, 1);
     }
 
     #[test]
