@@ -2,6 +2,12 @@
 
 Claude Desktop is a separate AIO client identity (`claude_desktop`). It shares AIO's provider database, gateway, failover, request logs, usage and pricing infrastructure with the existing CLIs, but does not share Claude Code's `~/.claude` configuration. Providers and route order are independent of Claude Code.
 
+## Local build based on 0.60.22
+
+The local Desktop-support branch includes the official `aio-coding-hub-v0.60.22` release (upstream commit `5949c5e953e440ee49a25e87874e23da2ee0d4b0`). This includes 0.60.21's OAuth credits and quota-aware routing, Codex WebSocket recovery fixes, and 0.60.22's completed-response retry fix. Desktop support remains a local addition; upstream PR #386 was still open on 2026-10-13.
+
+The installed Windows Claude Desktop package `2.31226.1.0` was inspected on 2026-10-13. Its default 3P directory remains `%LOCALAPPDATA%\Claude-3p`, and it still reads `deploymentMode`, `configLibrary/_meta.json`, `inferenceGatewayBaseUrl`, `inferenceGatewayApiKey`, `inferenceModels`, and `supports1m`. Its cached `ccd` catalog still uses the format read by this adapter and includes Opus 5.5, Sonnet 5.5, Fable 5.1, and Haiku 5.5. This check covers the default directory and file/schema compatibility; a custom user-data override and a live Desktop conversation were not tested for this package version.
+
 ## Compatibility and ownership
 
 | Concern | Claude Code | Claude Desktop in AIO |

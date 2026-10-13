@@ -170,6 +170,9 @@ pub(crate) struct ProviderUpsertInput {
     pub limit_weekly_usd: Option<f64>,
     pub limit_monthly_usd: Option<f64>,
     pub limit_total_usd: Option<f64>,
+    pub oauth_min_remaining_percent: Option<f64>,
+    #[serde(default)]
+    pub oauth_use_credits: bool,
     pub tags: Option<Vec<String>>,
     pub note: Option<String>,
     pub source_provider_id: Option<i64>,
@@ -246,6 +249,8 @@ fn provider_runtime_reset_decision(
         || previous.base_url_mode != next.base_url_mode
         || previous.enabled != next.enabled
         || previous.auth_mode != next.auth_mode
+        || previous.oauth_min_remaining_percent != next.oauth_min_remaining_percent
+        || previous.oauth_use_credits != next.oauth_use_credits
         || previous.supports_websockets != next.supports_websockets
         || previous.custom_headers != next.custom_headers
         || submitted_api_key_changed(previous_api_key, submitted_api_key)
@@ -297,6 +302,8 @@ pub(crate) async fn provider_upsert(
         limit_weekly_usd,
         limit_monthly_usd,
         limit_total_usd,
+        oauth_min_remaining_percent,
+        oauth_use_credits,
         tags,
         note,
         source_provider_id,
@@ -352,6 +359,8 @@ pub(crate) async fn provider_upsert(
                         limit_weekly_usd,
                         limit_monthly_usd,
                         limit_total_usd,
+                        oauth_min_remaining_percent,
+                        oauth_use_credits,
                         tags,
                         note,
                         source_provider_id,
@@ -468,6 +477,8 @@ pub(crate) async fn provider_duplicate(
                     limit_weekly_usd: source.limit_weekly_usd,
                     limit_monthly_usd: source.limit_monthly_usd,
                     limit_total_usd: source.limit_total_usd,
+                    oauth_min_remaining_percent: source.oauth_min_remaining_percent,
+                    oauth_use_credits: source.oauth_use_credits,
                     tags: Some(source.tags.clone()),
                     note: Some(source.note.clone()),
                     source_provider_id: source.source_provider_id,
@@ -780,6 +791,8 @@ mod tests {
             limit_weekly_usd: None,
             limit_monthly_usd: None,
             limit_total_usd: None,
+            oauth_min_remaining_percent: None,
+            oauth_use_credits: false,
             tags: vec![],
             note: String::new(),
             created_at: 1,
@@ -861,6 +874,17 @@ mod tests {
                 .clear_route_runtime_state
         );
 
+        let mut threshold_changed = next.clone();
+        threshold_changed.oauth_min_remaining_percent = Some(5.0);
+        let mut credits_changed = next.clone();
+        credits_changed.oauth_use_credits = true;
+        for changed in [&threshold_changed, &credits_changed] {
+            assert!(
+                provider_runtime_reset_decision(Some(&next), None, changed, None)
+                    .clear_route_runtime_state
+            );
+        }
+
         let mut disabled = next.clone();
         disabled.enabled = false;
 
@@ -894,6 +918,8 @@ mod tests {
             limit_weekly_usd: None,
             limit_monthly_usd: None,
             limit_total_usd: None,
+            oauth_min_remaining_percent: None,
+            oauth_use_credits: false,
             tags: vec![],
             note: String::new(),
             created_at: 1,
